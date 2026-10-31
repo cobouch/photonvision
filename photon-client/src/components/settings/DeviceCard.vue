@@ -1,6 +1,5 @@
-@ -0,0 +1,565 @@
 <script setup lang="ts">
-import { inject, computed, ref, watch } from "vue";
+import { inject, computed, ref, watch, useTemplateRef } from "vue";
 import { useStateStore } from "@/stores/StateStore";
 import { useSettingsStore } from "@/stores/settings/GeneralSettingsStore";
 import PvSelect from "@/components/common/pv-select.vue";
@@ -15,30 +14,30 @@ const theme = useTheme();
 
 const restartProgram = async () => {
   if (await axiosPost("/utils/restartProgram", "restart PhotonVision")) {
-    forceReloadPage();
+    await forceReloadPage();
   }
 };
 const restartDevice = async () => {
   if (await axiosPost("/utils/restartDevice", "restart the device")) {
-    forceReloadPage();
+    await forceReloadPage();
   }
 };
 
 const address = inject<string>("backendHost");
 
-const offlineUpdate = ref();
+const offlineUpdate = useTemplateRef("offlineUpdate");
 const openOfflineUpdatePrompt = () => {
-  offlineUpdate.value.click();
+  offlineUpdate.value?.click();
 };
 
-const offlineUpdateRegex = new RegExp("photonvision-((?:dev-)?v[\\w.-]+)-((?:linux|win|mac)\\w+)\\.jar");
+const offlineUpdateRegex = new RegExp("photonvision-((?:dev-)?v[\\w.-]+)-((?:linux|win|mac)[\\w-]+)\\.jar");
 const majorVersionRegex = new RegExp("(?:dev-)?(\\d+)\\.\\d+\\.\\d+");
 
 const offlineUpdateDialog = ref({ show: false, confirmString: "" });
 
 const handleOfflineUpdateRequest = async () => {
-  const files = offlineUpdate.value.files;
-  if (files.length === 0) return;
+  const files = offlineUpdate.value?.files;
+  if (!files?.length) return;
 
   const match = files[0].name.match(offlineUpdateRegex);
   if (!match) {
@@ -68,7 +67,7 @@ const handleOfflineUpdateRequest = async () => {
     });
     return;
   } else if (versionMatch && !dev) {
-    handleOfflineUpdate(files[0]);
+    await handleOfflineUpdate(files[0]);
   } else if (!versionMatch && !dev) {
     offlineUpdateDialog.value = {
       show: true,
@@ -99,7 +98,7 @@ const handleOfflineUpdate = async (file: File) => {
   if (
     await axiosPost("/utils/offlineUpdate", "upload new software", formData, {
       headers: { "Content-Type": "multipart/form-data" },
-      onUploadProgress: ({ progress }) => {
+      onUploadProgress: ({ progress }: { progress?: number }) => {
         const uploadPercentage = (progress || 0) * 100.0;
         if (uploadPercentage < 99.5) {
           useStateStore().showSnackbarMessage({
@@ -118,18 +117,18 @@ const handleOfflineUpdate = async (file: File) => {
       color: "secondary",
       timeout: -1
     });
-    forceReloadPage();
+    await forceReloadPage();
   }
 };
 
-const exportLogFile = ref();
+const exportLogFile = useTemplateRef("exportLogFile");
 const openExportLogsPrompt = () => {
-  exportLogFile.value.click();
+  exportLogFile.value?.click();
 };
 
-const exportSettings = ref();
+const exportSettings = useTemplateRef("exportSettings");
 const openExportSettingsPrompt = () => {
-  exportSettings.value.click();
+  exportSettings.value?.click();
 };
 
 enum ImportType {
@@ -137,14 +136,14 @@ enum ImportType {
   HardwareConfig,
   HardwareSettings,
   NetworkConfig,
-  ApriltagFieldLayout
+  FieldLayout
 }
 
 const showImportDialog = ref(false);
-const importType = ref<ImportType | undefined>(undefined);
+const importType = ref<ImportType>(ImportType.AllSettings);
 const importFile = ref<File | null>(null);
 
-const handleSettingsImport = () => {
+const handleSettingsImport = async () => {
   if (importType.value === undefined || importFile.value === null) return;
   const formData = new FormData();
   formData.append("data", importFile.value);
@@ -159,26 +158,26 @@ const handleSettingsImport = () => {
     case ImportType.NetworkConfig:
       settingsEndpoint = "/networkConfig";
       break;
-    case ImportType.ApriltagFieldLayout:
-      settingsEndpoint = "/aprilTagFieldLayout";
+    case ImportType.FieldLayout:
+      settingsEndpoint = "/fieldLayout";
       break;
     default:
     case ImportType.AllSettings:
       settingsEndpoint = "";
       break;
   }
-  axiosPost(`/settings${settingsEndpoint}`, "import settings", formData, {
+  await axiosPost(`/settings${settingsEndpoint}`, "import settings", formData, {
     headers: { "Content-Type": "multipart/form-data" }
   });
   showImportDialog.value = false;
-  importType.value = undefined;
+  importType.value = ImportType.AllSettings;
   importFile.value = null;
 };
 
 const showFactoryReset = ref(false);
 const nukePhotonConfigDirectory = async () => {
   if (await axiosPost("/utils/nukeConfigDirectory", "delete the config directory")) {
-    forceReloadPage();
+    await forceReloadPage();
   }
 };
 
@@ -312,7 +311,7 @@ watch(metricsHistorySnapshot, () => {
             <v-col>
               <v-btn
                 color="buttonPassive"
-                :variant="theme.global.name.value === 'LightTheme' ? 'elevated' : 'outlined'"
+                :variant="theme.global.current.value.dark ? 'outlined' : 'elevated'"
                 @click="useStateStore().showLogModal = true"
               >
                 <v-icon start class="open-icon" size="large"> mdi-eye </v-icon>
@@ -322,7 +321,7 @@ watch(metricsHistorySnapshot, () => {
             <v-col>
               <v-btn
                 color="buttonPassive"
-                :variant="theme.global.name.value === 'LightTheme' ? 'elevated' : 'outlined'"
+                :variant="theme.global.current.value.dark ? 'outlined' : 'elevated'"
                 @click="openExportLogsPrompt"
               >
                 <v-icon start class="open-icon" size="large"> mdi-download </v-icon>
@@ -345,7 +344,7 @@ watch(metricsHistorySnapshot, () => {
             <v-col>
               <v-btn
                 color="buttonPassive"
-                :variant="theme.global.name.value === 'LightTheme' ? 'elevated' : 'outlined'"
+                :variant="theme.global.current.value.dark ? 'outlined' : 'elevated'"
                 @click="() => (showImportDialog = true)"
               >
                 <v-icon start class="open-icon" size="large"> mdi-import </v-icon>
@@ -355,7 +354,7 @@ watch(metricsHistorySnapshot, () => {
             <v-col>
               <v-btn
                 color="buttonPassive"
-                :variant="theme.global.name.value === 'LightTheme' ? 'elevated' : 'outlined'"
+                :variant="theme.global.current.value.dark ? 'outlined' : 'elevated'"
                 @click="openExportSettingsPrompt"
               >
                 <v-icon start class="open-icon" size="large"> mdi-export </v-icon>
@@ -369,7 +368,7 @@ watch(metricsHistorySnapshot, () => {
             <v-col cols="12" sm="6"
               ><v-btn
                 color="buttonActive"
-                :variant="theme.global.name.value === 'LightTheme' ? 'elevated' : 'outlined'"
+                :variant="theme.global.current.value.dark ? 'outlined' : 'elevated'"
                 @click="restartProgram"
               >
                 <v-icon start class="open-icon" size="large"> mdi-restart </v-icon>
@@ -379,7 +378,7 @@ watch(metricsHistorySnapshot, () => {
             <v-col cols="12" sm="6">
               <v-btn
                 color="buttonPassive"
-                :variant="theme.global.name.value === 'LightTheme' ? 'elevated' : 'outlined'"
+                :variant="theme.global.current.value.dark ? 'outlined' : 'elevated'"
                 @click="openOfflineUpdatePrompt"
               >
                 <v-icon start class="open-icon" size="large"> mdi-upload </v-icon>
@@ -400,7 +399,7 @@ watch(metricsHistorySnapshot, () => {
             <v-col cols="12" sm="6">
               <v-btn
                 color="buttonActive"
-                :variant="theme.global.name.value === 'LightTheme' ? 'elevated' : 'outlined'"
+                :variant="theme.global.current.value.dark ? 'outlined' : 'elevated'"
                 @click="restartDevice"
               >
                 <v-icon start class="open-icon" size="large"> mdi-restart-alert </v-icon>
@@ -410,7 +409,7 @@ watch(metricsHistorySnapshot, () => {
             <v-col cols="12" sm="6">
               <v-btn
                 color="error"
-                :variant="theme.global.name.value === 'LightTheme' ? 'elevated' : 'outlined'"
+                :variant="theme.global.current.value.dark ? 'outlined' : 'elevated'"
                 @click="() => (showFactoryReset = true)"
               >
                 <v-icon start class="open-icon" size="large"> mdi-trash-can-outline </v-icon>
@@ -453,7 +452,7 @@ watch(metricsHistorySnapshot, () => {
         <v-card-text class="pt-0 flex-0-0 pb-2">
           <div class="d-flex justify-space-between pb-3 pt-3">
             <span>CPU Temperature</span>
-            <span>{{ cpuTempData.at(-1)?.value == -1 ? "--- " : Math.round(cpuTempData.at(-1)?.value ?? 0) }}°C</span>
+            <span>{{ cpuTempData.at(-1)?.value === -1 ? "--- " : Math.round(cpuTempData.at(-1)?.value ?? 0) }}°C</span>
           </div>
           <Suspense>
             <!-- Allows us to import echarts when it's actually needed  -->
@@ -470,7 +469,10 @@ watch(metricsHistorySnapshot, () => {
               tooltip="Measured rate for this coprocessor ONLY. This FMS limit is for ALL robot communication. If you are experiencing bandwidth issues while under this limit, check other sources."
             />
             <span
-              >{{ networkUsageData.at(-1)?.value == -1 ? "---" : networkUsageData.at(-1)?.value.toFixed(3) }} Mb/s</span
+              >{{
+                networkUsageData.at(-1)?.value === -1 ? "---" : networkUsageData.at(-1)?.value.toFixed(3)
+              }}
+              Mb/s</span
             >
           </div>
           <Suspense>
@@ -500,7 +502,7 @@ watch(metricsHistorySnapshot, () => {
     width="600"
     @update:modelValue="
       () => {
-        importType = undefined;
+        importType = ImportType.AllSettings;
         importFile = null;
       }
     "
@@ -514,7 +516,13 @@ watch(metricsHistorySnapshot, () => {
             v-model="importType"
             label="Type"
             tooltip="Select the type of settings file you are trying to upload"
-            :items="['All Settings', 'Hardware Config', 'Hardware Settings', 'Network Config', 'Apriltag Layout']"
+            :items="[
+              { value: ImportType.AllSettings, name: 'All Settings' },
+              { value: ImportType.HardwareConfig, name: 'Hardware Config' },
+              { value: ImportType.HardwareSettings, name: 'Hardware Settings' },
+              { value: ImportType.NetworkConfig, name: 'Network Config' },
+              { value: ImportType.FieldLayout, name: 'Field Layout' }
+            ]"
             :select-cols="10"
             style="width: 100%"
           />
@@ -529,7 +537,7 @@ watch(metricsHistorySnapshot, () => {
           <v-btn
             color="primary"
             :disabled="importFile === null"
-            :variant="theme.global.name.value === 'LightTheme' ? 'elevated' : 'outlined'"
+            :variant="theme.global.current.value.dark ? 'outlined' : 'elevated'"
             @click="handleSettingsImport"
           >
             <v-icon start class="open-icon"> mdi-import </v-icon>
@@ -552,10 +560,12 @@ watch(metricsHistorySnapshot, () => {
             <v-btn
               color="buttonActive"
               width="100%"
-              :variant="theme.global.name.value === 'LightTheme' ? 'elevated' : 'outlined'"
+              :variant="theme.global.current.value.dark ? 'outlined' : 'elevated'"
               @click="
                 offlineUpdateDialog.show = false;
-                handleOfflineUpdate(offlineUpdate.value.files[0]);
+                if (offlineUpdate?.files?.length) {
+                  handleOfflineUpdate(offlineUpdate.files[0]);
+                }
               "
             >
               <v-icon start class="open-icon" size="large"> mdi-upload </v-icon>
